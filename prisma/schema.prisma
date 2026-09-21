@@ -1,0 +1,255 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Motriz — modelo de dados
+//
+// Provider: SQLite. Escolhido por rodar sem serviço externo (o avaliador só
+// precisa de Node). O schema evita recursos exclusivos de SQLite para que a
+// troca por PostgreSQL seja apenas mudar `provider` + `DATABASE_URL` e gerar
+// uma nova migração. Enums são representados como String porque o conector
+// SQLite do Prisma não suporta `enum`; os valores válidos são a fonte única
+// em src/lib/enums.ts e validados por Zod no servidor.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String
+  name            String
+  // Dados de contato são privados por padrão. Só aparecem publicamente se o
+  // usuário optar explicitamente (showPhone/showEmail).
+  phone           String?
+  showPhone       Boolean   @default(false)
+  showEmail       Boolean   @default(false)
+  city            String?
+  state           String?
+  bio             String?
+  role            String    @default("USER") // USER | ADMIN
+  status          String    @default("ACTIVE") // ACTIVE | SUSPENDED
+  suspendedAt     DateTime?
+  suspendedReason String?
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sessions       Session[]
+  tokens         AuthToken[]
+  listings       Listing[]
+  favorites      Favorite[]
+  reportsMade    Report[]      @relation("ReporterReports")
+  reportsHandled Report[]      @relation("HandlerReports")
+  adminActions   AdminAction[] @relation("AdminActor")
+
+  @@index([role])
+  @@index([status])
+}
+
+/// Sessão persistida no banco. O cookie guarda apenas o segredo; o banco
+/// guarda o hash SHA-256 dele, então um vazamento do banco não gera login.
+model Session {
+  id         String   @id
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  ip         String?
+  userAgent  String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Tokens de uso único para verificação de e-mail e redefinição de senha.
+model AuthToken {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String // EMAIL_VERIFY | PASSWORD_RESET
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([expiresAt])
+}
+
+/// Contador de janela fixa para limitação de requisições (login, cadastro,
+/// recuperação de senha, upload, denúncia). Suficiente para uma instância.
+model RateLimit {
+  key         String   @id
+  count       Int      @default(0)
+  windowStart DateTime @default(now())
+
+  @@index([windowStart])
+}
+
+model Listing {
+  id       String @id @default(cuid())
+  slug     String @unique
+  sellerId String
+
+  brand        String
+  model        String
+  trim         String // versão
+  year         Int // ano de fabricação
+  modelYear    Int
+  priceCents   Int
+  mileageKm    Int
+  fuel         String // FLEX | GASOLINA | DIESEL | ETANOL | HIBRIDO | ELETRICO | GNV
+  transmission String // MANUAL | AUTOMATICO | AUTOMATIZADO | CVT
+  bodyType     String // HATCH | SEDA | SUV | PICAPE | ESPORTIVO | PERUA | MINIVAN | CUPE | CONVERSIVEL
+  color        String
+  doors        Int    @default(4)
+  city         String
+  state        String // UF
+  description  String
+  /// JSON array de opcionais (string[]). SQLite não tem tipo lista nativo.
+  features     String @default("[]")
+
+  status          String    @default("DRAFT") // DRAFT | PENDING | PUBLISHED | PAUSED | SOLD | REJECTED
+  rejectionReason String?
+  moderatedAt     DateTime?
+  publishedAt     DateTime?
+  soldAt          DateTime?
+
+  /// Canal pelo qual o comprador fala com o anunciante.
+  contactChannel String  @default("PLATFORM") // PLATFORM | WHATSAPP | EMAIL
+  contactPhone   String?
+
+  /// Anúncio de demonstração criado pelo seed — nunca misturado a dados reais.
+  isDemo Boolean @default(false)
+
+  viewCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  seller    User             @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  images    ListingImage[]
+  favorites Favorite[]
+  reports   Report[]
+  views     ListingViewDay[]
+
+  @@index([status, publishedAt])
+  @@index([sellerId, status])
+  @@index([brand, model])
+  @@index([priceCents])
+  @@index([modelYear])
+  @@index([mileageKm])
+  @@index([state, city])
+  @@index([bodyType])
+  @@index([isDemo])
+}
+
+model ListingImage {
+  id        String @id @default(cuid())
+  listingId String
+
+  /// Chave no armazenamento local (storage/uploads/<key>). Nome gerado no
+  /// servidor — nunca o nome enviado pelo cliente.
+  storageKey String
+  thumbKey   String
+  mimeType   String
+  byteSize   Int
+  width      Int
+  height     Int
+  alt        String
+  position   Int     @default(0)
+  isCover    Boolean @default(false)
+
+  /// Procedência da foto (obrigatória para imagens demonstrativas).
+  sourceUrl     String?
+  sourceAuthor  String?
+  sourceLicense String?
+  /// true quando não foi possível confirmar modelo/versão/ano da foto.
+  isIllustrative Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, position])
+  @@index([storageKey])
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  listingId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, listingId])
+  @@index([userId, createdAt])
+  @@index([listingId])
+}
+
+model Report {
+  id         String  @id @default(cuid())
+  listingId  String
+  reporterId String?
+  reason     String // FRAUDE | PRECO_ENGANOSO | DUPLICADO | FOTOS_INDEVIDAS | JA_VENDIDO | OUTRO
+  details    String?
+  status     String  @default("OPEN") // OPEN | ACTIONED | DISMISSED
+
+  handledById    String?
+  handledAt      DateTime?
+  resolutionNote String?
+
+  createdAt DateTime @default(now())
+
+  listing  Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  reporter User?   @relation("ReporterReports", fields: [reporterId], references: [id], onDelete: SetNull)
+  handler  User?   @relation("HandlerReports", fields: [handledById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([listingId])
+}
+
+/// Trilha de auditoria: toda ação administrativa fica registrada com motivo.
+model AdminAction {
+  id         String   @id @default(cuid())
+  adminId    String
+  action     String // LISTING_APPROVE | LISTING_REJECT | USER_SUSPEND | ...
+  targetType String // LISTING | USER | REPORT
+  targetId   String
+  reason     String?
+  /// JSON com contexto adicional (status anterior/novo, etc.)
+  metadata   String   @default("{}")
+  createdAt  DateTime @default(now())
+
+  admin User @relation("AdminActor", fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([targetType, targetId])
+  @@index([adminId])
+}
+
+/// Métrica real de visualizações: uma linha por anúncio/dia, incrementada na
+/// página de detalhes com deduplicação por visitante.
+model ListingViewDay {
+  id        String   @id @default(cuid())
+  listingId String
+  day       String // YYYY-MM-DD
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, day])
+  @@index([day])
+}
