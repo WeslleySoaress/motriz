@@ -1,0 +1,63 @@
+{
+  "name": "motriz",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.9"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:reset": "prisma migrate reset --force",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "photos:fetch": "tsx scripts/fetch-demo-photos.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "audit:deps": "npm audit --omit=dev",
+    "docs:creditos": "tsx scripts/gerar-creditos.ts",
+    "check:contraste": "node scripts/check-contrast.mjs",
+    "capturas": "playwright test --config=playwright.capturas.config.ts && tsx scripts/otimizar-capturas.ts",
+    "capturas:otimizar": "tsx scripts/otimizar-capturas.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.10.0",
+    "@prisma/client": "7.10.0",
+    "bcryptjs": "3.0.3",
+    "lucide-react": "1.47.0",
+    "next": "16.3.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "sharp": "0.35.4",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "^26.6.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "dotenv": "^18.0.1",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.3.5",
+    "prisma": "7.10.0",
+    "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.0",
+    "vitest": "5.0.1"
+  },
+  "overrides": {
+    "mysql2": "^3.24.4",
+    "deepmerge-ts": "^8.0.2"
+  }
+}
