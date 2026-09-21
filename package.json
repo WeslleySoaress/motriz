@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "description": "Marketplace de veículos: catálogo com busca e filtros, painel do anunciante e moderação.",
+  "author": "Weslley Soares <https://github.com/WeslleySoaress>",
+  "license": "MIT",
   "engines": {
     "node": ">=20.9"
   },
