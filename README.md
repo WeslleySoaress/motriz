@@ -342,4 +342,5 @@ de copyright.
 
 As **fotografias de demonstração não são MIT**: cada uma tem a licença do seu autor no
 Wikimedia Commons, listada em [docs/IMAGENS.md](docs/IMAGENS.md). CC BY e CC BY-SA
-exigem crédito ao autor e, no caso do CC BY-SA, que derivações mantenham a mesma licença.
+exigem crédito ao autor e, no caso do CC BY-SA, que derivações mantenham a mesma
+licença. O alcance exato está em [NOTICE](NOTICE).

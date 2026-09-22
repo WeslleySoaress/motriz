@@ -1,0 +1,23 @@
+AVISO SOBRE MATERIAL DE TERCEIROS
+=================================
+
+A licença MIT em LICENSE cobre o código-fonte deste projeto.
+
+Ela NÃO cobre as fotografias de demonstração:
+
+- as imagens baixadas por `npm run photos:fetch`, exibidas nos anúncios de
+  demonstração;
+- as capturas de tela em docs/capturas/, que mostram essas fotografias.
+
+Cada fotografia foi obtida no Wikimedia Commons sob licença livre — CC0,
+CC BY, CC BY-SA ou domínio público — e mantém a licença atribuída pelo seu
+autor. O autor, a licença e o link de origem de cada imagem estão em
+docs/IMAGENS.md, e aparecem também na página do anúncio correspondente.
+
+Consequências práticas:
+
+- CC BY e CC BY-SA exigem crédito ao autor onde a imagem for usada;
+- CC BY-SA exige que obras derivadas da imagem mantenham a mesma licença;
+- reutilizar este projeto NÃO transfere direito algum sobre as fotografias.
+  Para outro uso, consulte a licença individual em docs/IMAGENS.md ou
+  substitua as imagens pelas suas.
