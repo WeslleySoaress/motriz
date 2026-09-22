@@ -6,7 +6,7 @@ import { z } from 'zod'
  * estiver ausente ou malformado, o processo falha cedo e com mensagem clara,
  * em vez de quebrar no meio de uma requisição.
  */
-const schema = z.object({
+export const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL é obrigatória'),
   APP_URL: z.url().default('http://localhost:3000'),
@@ -18,11 +18,35 @@ const schema = z.object({
   UPLOAD_MAX_FILES_PER_LISTING: z.coerce.number().int().positive().max(40).default(12),
   MAIL_TRANSPORT: z.enum(['console', 'smtp']).default('console'),
   MAIL_FROM: z.string().default('Motriz <nao-responda@motriz.local>'),
+  // Só fazem sentido com MAIL_TRANSPORT="smtp"; a checagem cruzada está abaixo.
+  MAIL_SMTP_HOST: z.string().optional(),
+  MAIL_SMTP_PORT: z.coerce.number().int().positive().max(65535).default(587),
+  MAIL_SMTP_USER: z.string().optional(),
+  MAIL_SMTP_PASSWORD: z.string().optional(),
+  MAIL_SMTP_SECURE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   MODERATION_ENABLED: z
     .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
 })
+  // Escolher "smtp" sem credencial derrubaria o envio só na hora em que
+  // alguém pedisse recuperação de senha — o pior momento para descobrir. A
+  // checagem acontece na inicialização.
+  .superRefine((cfg, ctx) => {
+    if (cfg.MAIL_TRANSPORT !== 'smtp') return
+    for (const campo of ['MAIL_SMTP_HOST', 'MAIL_SMTP_USER', 'MAIL_SMTP_PASSWORD'] as const) {
+      if (!cfg[campo]) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [campo],
+          message: `${campo} é obrigatória quando MAIL_TRANSPORT="smtp"`,
+        })
+      }
+    }
+  })
 
 function load() {
   const parsed = schema.safeParse(process.env)

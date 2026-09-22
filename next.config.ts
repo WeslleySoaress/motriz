@@ -40,7 +40,7 @@ const nextConfig: NextConfig = {
    * Vale apenas para `next dev`; não tem efeito em produção.
    */
   allowedDevOrigins: ['127.0.0.1', 'localhost'],
-  serverExternalPackages: ['sharp', '@prisma/client', 'bcryptjs'],
+  serverExternalPackages: ['sharp', '@prisma/client', 'bcryptjs', 'nodemailer'],
   images: {
     // As imagens são servidas pela nossa própria rota /api/midia/:id, já
     // redimensionadas pelo sharp. Não usamos otimizador remoto.
