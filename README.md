@@ -1,5 +1,7 @@
 # Motriz
 
+[![CI](https://github.com/WeslleySoaress/motriz/actions/workflows/ci.yml/badge.svg)](https://github.com/WeslleySoaress/motriz/actions/workflows/ci.yml)
+
 Marketplace de veículos, do anúncio com foto ao comprador que encontra pela busca.
 
 Quem vende monta o anúncio, envia as fotos, escolhe a capa e acompanha as visitas.
@@ -234,6 +236,10 @@ npm run check:contraste       # contraste de todos os pares de cor
 | `npm run test:e2e` | **52 testes**, desktop 1440×900 e Pixel 7 |
 | `npm run audit:deps` | **0 vulnerabilidades** |
 | `npm run check:contraste` | **23/23 pares** acima do WCAG AA |
+
+Tudo isso roda no GitHub Actions a cada push, em quatro jobs paralelos
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). O selo no topo reflete
+a última execução — os números acima não dependem de você acreditar em mim.
 
 Os 105 testes de unidade e integração cobrem o que quebra regra de negócio ou
 segurança: a tradução entre URL e consulta do catálogo, as transições de situação do

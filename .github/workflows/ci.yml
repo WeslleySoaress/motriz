@@ -1,0 +1,105 @@
+name: CI
+
+# Roda a cada push e a cada pull request na branch principal.
+# O objetivo é que os números declarados no README sejam verificáveis por uma
+# máquina neutra, e não apenas afirmados.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Um push novo cancela a execução anterior da mesma referência: não adianta
+# gastar minuto de runner terminando a verificação de um commit já substituído.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # O build importa src/lib/env.ts, que valida a configuração e derruba o
+  # processo se algo obrigatório faltar. Estes valores são de CI, descartáveis,
+  # e não correspondem a nenhum ambiente real.
+  DATABASE_URL: file:./prisma/ci.db
+  AUTH_SECRET: segredo-de-integracao-continua-com-32-chars
+  APP_URL: http://localhost:3000
+  MAIL_TRANSPORT: console
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  verificacao:
+    name: Tipos, lint e build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Verificação de tipos
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Build de produção
+        run: npm run build
+
+  testes:
+    name: Unidade e integração
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      # O globalSetup do Vitest cria e migra prisma/test.db sozinho, e apaga no
+      # fim. Nenhum preparo extra é necessário aqui.
+      - name: Vitest
+        run: npm test
+
+  e2e:
+    name: Ponta a ponta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      # Só o Chromium: os dois projetos do Playwright (desktop e Pixel 7) usam
+      # o mesmo motor, então baixar Firefox e WebKit seria minuto perdido.
+      - name: Instalar navegador
+        run: npx playwright install --with-deps chromium
+      # O webServer do Playwright roda tests/e2e/preparar.ts antes de subir o
+      # servidor, com banco, uploads e porta próprios.
+      - name: Playwright
+        run: npm run test:e2e
+      - name: Guardar o relatório quando falhar
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  auditoria:
+    name: Dependências e contraste
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Vulnerabilidades nas dependências de produção
+        run: npm run audit:deps
+      - name: Contraste de cor (WCAG AA)
+        run: npm run check:contraste
