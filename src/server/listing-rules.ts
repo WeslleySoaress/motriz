@@ -36,6 +36,21 @@ export function canSellerTransition(from: string, to: string): boolean {
 }
 
 /**
+ * Situações em que o anúncio pode ser salvo com a validação permissiva do
+ * rascunho, que aceita campo vazio e preço zerado.
+ *
+ * Só valem as situações em que o anúncio **não está no catálogo**. Um anúncio
+ * publicado precisa da validação completa: sem esta regra, uma chamada direta
+ * a `saveDraftAction` aplicaria o esquema permissivo a um anúncio no ar e o
+ * deixaria visível com marca vazia e preço zero, porque salvar não mexe na
+ * situação. O formulário já escolhe a ação certa pela situação — esta função
+ * existe para o servidor não depender dessa escolha.
+ */
+export function canSaveAsDraft(status: string): boolean {
+  return status === 'DRAFT' || status === 'REJECTED'
+}
+
+/**
  * Para onde vai o anúncio quando o anunciante pede publicação.
  * Com moderação ligada passa por análise; sem moderação vai direto ao ar.
  */

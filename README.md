@@ -238,7 +238,7 @@ npm run check:contraste       # contraste de todos os pares de cor
 | Verificação | Resultado |
 | ----------- | --------- |
 | `typecheck` · `lint` · `build` | sem erros |
-| `npm test` | **112 testes**, 7 arquivos |
+| `npm test` | **126 testes**, 7 arquivos |
 | `npm run test:e2e` | **52 testes**, desktop 1440×900 e Pixel 7 |
 | `npm run audit:deps` | **0 vulnerabilidades** |
 | `npm run check:contraste` | **23/23 pares** acima do WCAG AA |
@@ -247,7 +247,7 @@ Tudo isso roda no GitHub Actions a cada push, em quatro jobs paralelos
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). O selo no topo reflete
 a última execução — os números acima não dependem de você acreditar em mim.
 
-Os 112 testes de unidade e integração cobrem o que quebra regra de negócio ou
+Os 126 testes de unidade e integração cobrem o que quebra regra de negócio ou
 segurança: a tradução entre URL e consulta do catálogo, as transições de situação do
 anúncio, a validação de entrada, o ciclo de sessão e a leitura real do cabeçalho das
 imagens enviadas.

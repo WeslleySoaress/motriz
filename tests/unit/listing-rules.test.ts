@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest'
 import {
   canDelete,
   canEdit,
+  canSaveAsDraft,
   canSellerTransition,
   canView,
   publishBlockers,
   statusOnPublishRequest,
   statusSideEffects,
 } from '@/server/listing-rules'
+import { LISTING_STATUSES, PUBLICLY_VISIBLE_STATUSES } from '@/lib/enums'
 
 /**
  * Regras de negócio do anúncio.
@@ -114,6 +116,42 @@ describe('publicação', () => {
     expect(impedimentos).toContain('EMAIL_NAO_VERIFICADO')
     expect(impedimentos).toContain('CONTA_SUSPENSA')
     expect(impedimentos).toContain('CAMPOS_INCOMPLETOS')
+  })
+})
+
+describe('salvamento com validação de rascunho (canSaveAsDraft)', () => {
+  it('permite rascunho, que é o caso de uso normal', () => {
+    expect(canSaveAsDraft('DRAFT')).toBe(true)
+  })
+
+  it('permite rejeitado, porque o anunciante precisa corrigir para reenviar', () => {
+    expect(canSaveAsDraft('REJECTED')).toBe(true)
+  })
+
+  it.each(['PUBLISHED', 'PENDING', 'PAUSED', 'SOLD'])(
+    'recusa %s — exigem a validação completa',
+    (status) => {
+      expect(canSaveAsDraft(status)).toBe(false)
+    },
+  )
+
+  // Esta é a propriedade que importa de verdade: se amanhã alguém acrescentar
+  // uma situação pública nova, este teste falha até que a regra seja revista.
+  it('nunca permite salvamento permissivo em situação visível ao público', () => {
+    for (const status of PUBLICLY_VISIBLE_STATUSES) {
+      expect(canSaveAsDraft(status)).toBe(false)
+    }
+  })
+
+  it('não deixa nenhuma situação conhecida sem decisão explícita', () => {
+    for (const status of LISTING_STATUSES) {
+      expect(typeof canSaveAsDraft(status)).toBe('boolean')
+    }
+  })
+
+  it('recusa situação desconhecida', () => {
+    expect(canSaveAsDraft('QUALQUER_COISA')).toBe(false)
+    expect(canSaveAsDraft('')).toBe(false)
   })
 })
 

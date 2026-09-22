@@ -36,7 +36,17 @@ async function requireAdminActor() {
   return user
 }
 
-async function recordAction(input: {
+/**
+ * Monta a gravação do registro de auditoria **sem executá-la**, para que ela
+ * entre na mesma transação da alteração que descreve.
+ *
+ * Gravar as duas separadamente permitia que a alteração passasse e o registro
+ * falhasse, deixando um anúncio tirado do ar ou uma conta suspensa sem
+ * histórico de quem fez e por quê. Como a promessa do projeto é que toda ação
+ * administrativa deixa rastro, as duas gravações precisam ser uma só: ou
+ * acontecem juntas, ou nenhuma acontece.
+ */
+function auditoria(input: {
   adminId: string
   action: AdminActionType
   targetType: 'LISTING' | 'USER' | 'REPORT'
@@ -44,7 +54,7 @@ async function recordAction(input: {
   reason?: string | null
   metadata?: Record<string, unknown>
 }) {
-  await prisma.adminAction.create({
+  return prisma.adminAction.create({
     data: {
       adminId: input.adminId,
       action: input.action,
@@ -101,31 +111,35 @@ export async function moderateListingAction(
   const title = `${listing.brand} ${listing.model} ${listing.trim}`.trim()
 
   try {
-    await prisma.listing.update({
-      where: { id: listing.id },
-      data: approved
-        ? {
-            status: 'PUBLISHED',
-            publishedAt: new Date(),
-            moderatedAt: new Date(),
-            rejectionReason: null,
-          }
-        : {
-            status: 'REJECTED',
-            moderatedAt: new Date(),
-            publishedAt: null,
-            rejectionReason: reason ?? null,
-          },
-    })
-
-    await recordAction({
-      adminId: admin.id,
-      action: approved ? 'LISTING_APPROVE' : 'LISTING_REJECT',
-      targetType: 'LISTING',
-      targetId: listing.id,
-      reason: approved ? null : reason,
-      metadata: { statusAnterior: listing.status, statusNovo: approved ? 'PUBLISHED' : 'REJECTED' },
-    })
+    await prisma.$transaction([
+      prisma.listing.update({
+        where: { id: listing.id },
+        data: approved
+          ? {
+              status: 'PUBLISHED',
+              publishedAt: new Date(),
+              moderatedAt: new Date(),
+              rejectionReason: null,
+            }
+          : {
+              status: 'REJECTED',
+              moderatedAt: new Date(),
+              publishedAt: null,
+              rejectionReason: reason ?? null,
+            },
+      }),
+      auditoria({
+        adminId: admin.id,
+        action: approved ? 'LISTING_APPROVE' : 'LISTING_REJECT',
+        targetType: 'LISTING',
+        targetId: listing.id,
+        reason: approved ? null : reason,
+        metadata: {
+          statusAnterior: listing.status,
+          statusNovo: approved ? 'PUBLISHED' : 'REJECTED',
+        },
+      }),
+    ])
 
     await sendMail({
       to: listing.seller.email,
@@ -168,24 +182,25 @@ export async function suspendListingAction(
   if (!listing) return { ok: false, message: 'Anúncio não encontrado.' }
 
   try {
-    await prisma.listing.update({
-      where: { id: listing.id },
-      data: {
-        status: 'REJECTED',
-        rejectionReason: reason,
-        moderatedAt: new Date(),
-        publishedAt: null,
-      },
-    })
-
-    await recordAction({
-      adminId: admin.id,
-      action: 'LISTING_SUSPEND',
-      targetType: 'LISTING',
-      targetId: listing.id,
-      reason,
-      metadata: { statusAnterior: listing.status },
-    })
+    await prisma.$transaction([
+      prisma.listing.update({
+        where: { id: listing.id },
+        data: {
+          status: 'REJECTED',
+          rejectionReason: reason,
+          moderatedAt: new Date(),
+          publishedAt: null,
+        },
+      }),
+      auditoria({
+        adminId: admin.id,
+        action: 'LISTING_SUSPEND',
+        targetType: 'LISTING',
+        targetId: listing.id,
+        reason,
+        metadata: { statusAnterior: listing.status },
+      }),
+    ])
 
     await sendMail({
       to: listing.seller.email,
@@ -247,20 +262,21 @@ export async function suspendUserAction(
         where: { sellerId: userId, status: { in: ['PUBLISHED', 'PENDING'] } },
         data: { status: 'PAUSED' },
       }),
+      auditoria({
+        adminId: admin.id,
+        action: 'USER_SUSPEND',
+        targetType: 'USER',
+        targetId: userId,
+        reason,
+        metadata: { statusAnterior: target.status },
+      }),
     ])
 
     // Derruba as sessões: a suspensão vale a partir de agora, não do próximo
-    // login.
+    // login. Fica fora da transação de propósito — apagar sessão é idempotente
+    // e, se falhar, a próxima requisição da conta suspensa já é recusada por
+    // `validateSessionToken`.
     await invalidateAllSessions(userId)
-
-    await recordAction({
-      adminId: admin.id,
-      action: 'USER_SUSPEND',
-      targetType: 'USER',
-      targetId: userId,
-      reason,
-      metadata: { statusAnterior: target.status },
-    })
 
     revalidatePath('/admin/usuarios')
     revalidatePath('/catalogo')
@@ -285,19 +301,20 @@ export async function reinstateUserAction(
   if (!target) return { ok: false, message: 'Conta não encontrada.' }
 
   try {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { status: 'ACTIVE', suspendedAt: null, suspendedReason: null },
-    })
-
-    await recordAction({
-      adminId: admin.id,
-      action: 'USER_REINSTATE',
-      targetType: 'USER',
-      targetId: userId,
-      reason,
-      metadata: { statusAnterior: target.status },
-    })
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: userId },
+        data: { status: 'ACTIVE', suspendedAt: null, suspendedReason: null },
+      }),
+      auditoria({
+        adminId: admin.id,
+        action: 'USER_REINSTATE',
+        targetType: 'USER',
+        targetId: userId,
+        reason,
+        metadata: { statusAnterior: target.status },
+      }),
+    ])
 
     revalidatePath('/admin/usuarios')
     return {
@@ -335,24 +352,25 @@ export async function resolveReportAction(
   if (!report) return { ok: false, message: 'Denúncia não encontrada.' }
 
   try {
-    await prisma.report.update({
-      where: { id: reportId },
-      data: {
-        status: decision,
-        handledById: admin.id,
-        handledAt: new Date(),
-        resolutionNote: note || null,
-      },
-    })
-
-    await recordAction({
-      adminId: admin.id,
-      action: decision === 'ACTIONED' ? 'REPORT_ACTIONED' : 'REPORT_DISMISSED',
-      targetType: 'REPORT',
-      targetId: reportId,
-      reason: note,
-      metadata: { listingId: report.listingId, statusAnterior: report.status },
-    })
+    await prisma.$transaction([
+      prisma.report.update({
+        where: { id: reportId },
+        data: {
+          status: decision,
+          handledById: admin.id,
+          handledAt: new Date(),
+          resolutionNote: note || null,
+        },
+      }),
+      auditoria({
+        adminId: admin.id,
+        action: decision === 'ACTIONED' ? 'REPORT_ACTIONED' : 'REPORT_DISMISSED',
+        targetType: 'REPORT',
+        targetId: reportId,
+        reason: note,
+        metadata: { listingId: report.listingId, statusAnterior: report.status },
+      }),
+    ])
 
     revalidatePath('/admin/denuncias')
     return {

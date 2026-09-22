@@ -23,6 +23,7 @@ import { FEATURES, type Feature, type ListingStatus } from '@/lib/enums'
 import {
   canDelete,
   canEdit,
+  canSaveAsDraft,
   canSellerTransition,
   publishBlockers,
   PUBLISH_BLOCKER_LABELS,
@@ -167,6 +168,18 @@ export async function saveDraftAction(
   const listingId = String(formData.get('listingId') ?? '')
   const owned = await loadOwned(listingId)
   if ('error' in owned) return { ok: false, message: owned.error }
+
+  // Ser dono não basta: a validação permissiva do rascunho só vale para
+  // anúncio fora do catálogo. Sem esta checagem, uma chamada direta com o id
+  // de um anúncio publicado gravaria marca vazia e preço zero sem tirá-lo do
+  // ar — o formulário já não oferece esse caminho, mas o servidor não pode
+  // depender disso.
+  if (!canSaveAsDraft(owned.listing.status)) {
+    return {
+      ok: false,
+      message: 'Este anúncio não é um rascunho. Use o formulário completo para editá-lo.',
+    }
+  }
 
   const raw = readCore(formData)
   const parsed = listingDraftSchema.safeParse({

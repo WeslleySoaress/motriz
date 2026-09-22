@@ -45,31 +45,69 @@ export async function consumeRateLimit(
   const key = `${name}:${identifier}`
   const now = new Date()
   const windowMs = rule.windowSec * 1000
+  // Início da janela ainda válida: qualquer registro mais antigo que isto já
+  // expirou e deve ser reiniciado.
+  const inicioValido = new Date(now.getTime() - windowMs)
 
-  const existing = await prisma.rateLimit.findUnique({ where: { key } })
-
-  if (!existing || now.getTime() - existing.windowStart.getTime() >= windowMs) {
-    await prisma.rateLimit.upsert({
-      where: { key },
-      create: { key, count: 1, windowStart: now },
-      update: { count: 1, windowStart: now },
-    })
-    return { ok: true, remaining: rule.limit - 1, retryAfterSec: 0 }
-  }
-
-  if (existing.count >= rule.limit) {
-    const retryAfterSec = Math.ceil(
-      (existing.windowStart.getTime() + windowMs - now.getTime()) / 1000,
-    )
-    return { ok: false, remaining: 0, retryAfterSec: Math.max(retryAfterSec, 1) }
-  }
-
-  const updated = await prisma.rateLimit.update({
-    where: { key },
+  // 1. Consumo do caso comum, numa única instrução atômica. A condição
+  //    `count < limit` faz parte do WHERE, então o banco decide se há vaga no
+  //    mesmo comando que incrementa. Ler primeiro e incrementar depois deixava
+  //    uma janela em que várias requisições liam o mesmo contador e passavam
+  //    todas — com o limite de login, isso significava mais tentativas de
+  //    senha do que o declarado.
+  const consumido = await prisma.rateLimit.updateMany({
+    where: { key, windowStart: { gte: inicioValido }, count: { lt: rule.limit } },
     data: { count: { increment: 1 } },
   })
 
-  return { ok: true, remaining: Math.max(rule.limit - updated.count, 0), retryAfterSec: 0 }
+  if (consumido.count === 1) {
+    const atual = await prisma.rateLimit.findUnique({ where: { key }, select: { count: true } })
+    return {
+      ok: true,
+      remaining: Math.max(rule.limit - (atual?.count ?? rule.limit), 0),
+      retryAfterSec: 0,
+    }
+  }
+
+  // 2. Não consumiu. Ou a janela expirou, ou o limite estourou, ou não existe
+  //    registro. Reiniciar uma janela vencida também é condicional: se outra
+  //    requisição reiniciou primeiro, esta não sobrescreve o contador dela.
+  const reiniciado = await prisma.rateLimit.updateMany({
+    where: { key, windowStart: { lt: inicioValido } },
+    data: { count: 1, windowStart: now },
+  })
+
+  if (reiniciado.count === 1) {
+    return { ok: true, remaining: rule.limit - 1, retryAfterSec: 0 }
+  }
+
+  // 3. Primeira vez para esta chave. O create pode colidir com outra
+  //    requisição simultânea criando a mesma linha; nesse caso a chave única
+  //    faz o create falhar, e quem perdeu a corrida tenta consumir de novo.
+  try {
+    await prisma.rateLimit.create({ data: { key, count: 1, windowStart: now } })
+    return { ok: true, remaining: rule.limit - 1, retryAfterSec: 0 }
+  } catch {
+    const disputado = await prisma.rateLimit.updateMany({
+      where: { key, windowStart: { gte: inicioValido }, count: { lt: rule.limit } },
+      data: { count: { increment: 1 } },
+    })
+    if (disputado.count === 1) {
+      return { ok: true, remaining: 0, retryAfterSec: 0 }
+    }
+  }
+
+  // 4. Limite estourado dentro da janela vigente.
+  const existente = await prisma.rateLimit.findUnique({
+    where: { key },
+    select: { windowStart: true },
+  })
+  const fim = (existente?.windowStart.getTime() ?? now.getTime()) + windowMs
+  return {
+    ok: false,
+    remaining: 0,
+    retryAfterSec: Math.max(Math.ceil((fim - now.getTime()) / 1000), 1),
+  }
 }
 
 /** Zera o contador após uma operação bem-sucedida (ex.: login correto). */

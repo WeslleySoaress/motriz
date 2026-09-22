@@ -14,7 +14,7 @@ testado, está dito — ver também [PENDENCIAS.md](PENDENCIAS.md).
 | Tipos | `npm run typecheck` | **Sem erros** |
 | Lint | `npm run lint` | **Sem erros nem avisos** |
 | Build de produção | `npm run build` | **Sucesso** (2 avisos, §6) |
-| Unidade + integração | `npm test` | **105/105** em ~8 s |
+| Unidade + integração | `npm test` | **126/126** em ~9 s |
 | Ponta a ponta | `npm run test:e2e` | **52/52** em ~2 min |
 | Dependências | `npm run audit:deps` | **0 vulnerabilidades** (§5) |
 | Contraste de cor | `npm run check:contraste` | **23/23 pares ≥ WCAG AA** |
@@ -36,17 +36,18 @@ decide *quem pode ver ou alterar o quê* tem teste.
 
 ---
 
-## 3. Unidade e integração — 105 testes
+## 3. Unidade e integração — 126 testes
 
 ```
-tests/unit/listing-rules.test.ts             21 testes
-tests/unit/catalog.test.ts                   15 testes
-tests/unit/validation.test.ts                30 testes
+tests/unit/listing-rules.test.ts             31 testes
+tests/unit/catalog.test.ts                   14 testes
+tests/unit/validation.test.ts                33 testes
 tests/unit/slug-publicacao.test.ts            3 testes
-tests/integration/images.test.ts             12 testes
-tests/integration/auth-and-access.test.ts    24 testes
+tests/unit/env.test.ts                        7 testes
+tests/integration/images.test.ts             13 testes
+tests/integration/auth-and-access.test.ts    25 testes
 ─────────────────────────────────────────────────────
-Total                                       105 passando
+Total                                       126 passando
 ```
 
 Banco isolado (`prisma/test.db`), criado e destruído pela própria suíte. O
@@ -125,6 +126,41 @@ O item 3 é o melhor argumento a favor do teste ponta a ponta: nenhuma
 verificação de tipos, lint ou teste de unidade encontraria esse defeito, porque
 cada peça isolada estava correta — o problema estava na ordem em que elas
 aconteciam.
+
+### Defeitos encontrados por revisão externa de código
+
+Três achados de uma revisão de código feita por terceiro, todos confirmados
+contra o código e corrigidos. Nenhum deles seria pego pelos testes que existiam
+— o que é a informação mais útil desta seção: a suíte estava cega para
+concorrência e para chamadas fora do caminho da interface.
+
+4. **`saveDraftAction` conferia o dono, mas não a situação do anúncio.** A ação
+   usa a validação permissiva do rascunho, que aceita campo vazio e preço zero.
+   O formulário só a oferece para rascunho e recusado, mas o servidor confiava
+   nessa escolha: uma chamada direta com o id de um anúncio **publicado**
+   gravaria marca vazia e preço zero, e o anúncio continuaria no catálogo
+   assim, porque salvar não altera a situação. Corrigido com a regra pura
+   `canSaveAsDraft`, conferida no servidor. Um dos testes percorre
+   `PUBLICLY_VISIBLE_STATUSES`, então uma situação pública nova quebra a suíte
+   até a regra ser revista.
+
+5. **O limite de requisições não valia sob concorrência.** Consumir o limite
+   era ler o contador, comparar e então incrementar — três operações separadas.
+   Chamadas simultâneas liam o mesmo valor antes de qualquer gravação e
+   passavam todas. **Medido com o código antigo: 24 de 24 chamadas concorrentes
+   foram autorizadas num limite de 8.** Na prática o limite de login não
+   existia contra quem dispara em paralelo, que é exatamente como se faz força
+   bruta. Corrigido com um `UPDATE` condicional, em que `count < limite` faz
+   parte do `WHERE`. O teste novo foi conferido contra o código antigo e falha
+   nele — um teste que passasse nos dois não provaria nada.
+
+6. **A auditoria administrativa podia não acontecer.** A alteração e o seu
+   registro em `AdminAction` eram duas gravações sequenciais. Se a segunda
+   falhasse, sobrava um anúncio tirado do ar ou uma conta suspensa sem
+   histórico de quem fez e por quê — enquanto a documentação prometia rastro de
+   **toda** ação administrativa. As cinco operações passaram a usar
+   `$transaction`. O teste força a falha do registro com um autor inexistente,
+   que viola a chave estrangeira, e exige que a alteração tenha sido desfeita.
 
 ---
 

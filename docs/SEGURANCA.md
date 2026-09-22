@@ -60,7 +60,18 @@ explicitamente.
 
 ### Limitação de tentativas (A4)
 
-Janela fixa persistida no banco (`src/lib/rate-limit.ts`):
+Janela fixa persistida no banco (`src/lib/rate-limit.ts`), consumida por um
+`UPDATE` condicional: a comparação `count < limite` faz parte do `WHERE`, então
+o banco decide se há vaga no mesmo comando que incrementa.
+
+> **Corrigido depois de uma revisão externa.** A versão anterior lia o
+> contador, comparava e só então incrementava — três operações separadas.
+> Requisições simultâneas liam o mesmo valor antes de qualquer gravação e
+> passavam todas. Com o código antigo, **24 de 24 chamadas concorrentes foram
+> autorizadas num limite de 8**: na prática, o limite de login não existia
+> contra um atacante que dispara em paralelo, que é exatamente como se ataca.
+> O teste que expõe isso está em `tests/integration/auth-and-access.test.ts` e
+> foi conferido contra o código antigo, para garantir que ele falha de verdade.
 
 | Operação | Limite | Janela |
 | --- | --- | --- |
@@ -127,6 +138,21 @@ prisma.listing.findFirst({ where: { id: listingId, sellerId } })
 Um id de anúncio alheio simplesmente não retorna linha. Isso elimina o padrão
 "carrega e depois compara", que é de onde costumam sair falhas de autorização.
 
+### Ser dono não basta: a situação também é conferida
+
+> **Corrigido depois de uma revisão externa.** `saveDraftAction` usa a
+> validação permissiva do rascunho, que aceita campo vazio e preço zerado. Ela
+> conferia o dono, mas **não conferia a situação do anúncio**. O formulário só
+> oferece essa ação para rascunho e recusado, mas o servidor confiava nessa
+> escolha: uma chamada direta com o id de um anúncio **publicado** gravaria
+> marca vazia e preço zero — e, como salvar não mexe na situação, o anúncio
+> continuaria no catálogo assim.
+>
+> A regra virou uma função pura, `canSaveAsDraft`, conferida no servidor antes
+> de qualquer gravação. Um dos testes percorre `PUBLICLY_VISIBLE_STATUSES`, de
+> modo que acrescentar uma situação pública nova quebra a suíte até a regra ser
+> revista.
+
 ### Respostas que não confirmam existência
 
 Anúncio de outra pessoa, arquivo de outra pessoa e a área administrativa
@@ -138,8 +164,18 @@ respondem **404**, não 403. Um 403 confirmaria que o recurso existe.
 - Um administrador **não pode** suspender a própria conta nem outra conta
   administradora pela interface — promover ou rebaixar exige acesso ao banco.
 - **Toda** ação administrativa grava uma linha em `AdminAction` com autor,
-  alvo, motivo e estado anterior. A tela de auditoria é somente leitura: não
-  existe caminho na aplicação para editar ou apagar um registro.
+  alvo, motivo e estado anterior, **na mesma transação da alteração que
+  descreve**. Ou as duas gravações acontecem, ou nenhuma acontece. A tela de
+  auditoria é somente leitura: não existe caminho na aplicação para editar ou
+  apagar um registro.
+
+  > **Corrigido depois de uma revisão externa.** Antes, a alteração e o
+  > registro eram duas gravações sequenciais. Se a segunda falhasse, sobrava um
+  > anúncio tirado do ar ou uma conta suspensa sem histórico de quem fez e por
+  > quê — a promessa de rastro completo valia só enquanto nada desse errado. As
+  > cinco operações administrativas passaram a usar `$transaction`, e um teste
+  > força a falha do registro com autor inexistente para exigir que a alteração
+  > seja desfeita.
 - Rejeição, suspensão de anúncio e suspensão de conta exigem motivo escrito,
   que é enviado ao anunciante.
 
