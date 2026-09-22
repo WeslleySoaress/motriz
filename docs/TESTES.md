@@ -341,13 +341,71 @@ botão de favoritar, `aria-current` na paginação, link "pular para o conteúdo
 
 ---
 
+## 7.1 Desempenho (Lighthouse)
+
+Medido com **Lighthouse 12.8** contra o **build de produção** (`next start`),
+perfil **celular** com estrangulamento simulado. São números de uma máquina
+local: servem para comparar antes e depois, não para prometer o que acontece
+na rede de um usuário real.
+
+A medição encontrou dois defeitos reais, ambos corrigidos:
+
+1. **Quatro cards em `eager` na página inicial.** `priority={index < 4}` fazia
+   quatro fotografias grandes disputarem banda com a foto do herói, que é o
+   elemento de LCP — e a seção de destaques fica abaixo da dobra nas duas
+   larguras. O mesmo padrão estava no catálogo (`index < 3`) e nos favoritos.
+2. **Compressão WebP folgada.** Qualidade 82 com esforço 4 produzia arquivos de
+   250 a 636 KB. Passou para qualidade 76 com esforço 6: o custo extra acontece
+   uma vez, no upload; a economia vale em toda visita.
+
+| Página | Desempenho | LCP | Peso total |
+| --- | --- | --- | --- |
+| Inicial | 75 → **81** | 7,8 s → **5,3 s** | 1738 KB → **1353 KB** |
+| Catálogo | 75 → **78** | 8,3 s → **6,0 s** | 2238 KB → **1728 KB** |
+| Veículo | 76 → **80** | 5,7 s → **4,8 s** | 1112 KB → **901 KB** |
+
+Os uploads no disco caíram 23% (22,4 MB → 17,3 MB) para o mesmo conjunto de
+fotografias.
+
+Outras categorias, na medição final:
+
+| Página | Acessibilidade | CLS | TBT |
+| --- | --- | --- | --- |
+| Inicial | **100** | 0,000 | 48 ms |
+| Catálogo | **99** | 0,000 | 88 ms |
+| Veículo | **100** | 0,092 | 97 ms |
+
+**O que continua ruim, e por quê.** O LCP ainda está acima dos 2,5 s
+considerados bons. A causa está identificada e **não foi corrigida**: o
+`srcset` oferece apenas 480w e 1600w. No celular o layout pede cerca de 985 px
+reais, então o navegador escolhe o arquivo de 1600w. Falta um degrau
+intermediário (algo como 1024w), o que exige uma variante nova no processamento
+de imagem, uma coluna nova em `ListingImage` e o reprocessamento das fotos
+existentes. Está registrado em [PENDENCIAS.md](PENDENCIAS.md).
+
+Dois outros achados menores, ainda abertos: o catálogo fica em 99 de
+acessibilidade por uma sequência de títulos fora de ordem, e a página do
+veículo tem CLS de 0,092 — dentro do limite bom de 0,1, mas perto dele.
+
+**Como repetir:**
+
+```bash
+npm run build
+npx next start --port 3310
+npx lighthouse http://127.0.0.1:3310/ --form-factor=mobile \
+  --chrome-flags="--headless=new" --output=html --output-path=./lh.html
+```
+
+---
+
 ## 8. O que não foi testado
 
 - Firefox e WebKit (só Chromium).
-- Lighthouse / Core Web Vitals — nenhum número foi coletado.
 - Teste de carga.
 - Leitor de tela real.
-- Envio de e-mail por SMTP — não implementado.
+- **Envio de e-mail por SMTP contra um provedor real.** O transporte está
+  implementado e a validação da configuração é testada, mas nenhuma mensagem
+  foi entregue por um servidor SMTP de verdade — ver [PENDENCIAS.md](PENDENCIAS.md).
 - Os testes ponta a ponta rodam contra `next dev`, não contra o build de
   produção. O build é verificado separadamente por `npm run build`.
 

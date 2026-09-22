@@ -12,9 +12,22 @@ Itens que impedem operar a plataforma de verdade.
 
 ### 1.1 Envio de e-mail — `MAIL_TRANSPORT`
 
-**Situação:** apenas o transporte `console` está implementado. Ele grava a
-mensagem em `log/emails.log` e imprime no terminal. `MAIL_TRANSPORT="smtp"`
-lança erro explícito na chamada, em vez de fingir que enviou.
+**Situação:** os dois transportes estão implementados. O `console` (padrão)
+grava em `log/emails.log` e imprime no terminal. O `smtp` envia de verdade, por
+nodemailer, com pool de conexões, tempo limite e TLS exigido — na porta 587 o
+STARTTLS é obrigatório (`requireTLS`), e a mensagem não parte se a negociação
+falhar.
+
+**O que foi verificado:** tipos, lint e a validação cruzada da configuração —
+escolher `MAIL_TRANSPORT="smtp"` sem host, usuário ou senha **derruba a
+aplicação na inicialização**, com os campos faltantes nomeados, em vez de falhar
+só quando alguém pedir recuperação de senha. Isso tem sete testes em
+`tests/unit/env.test.ts`.
+
+**O que NÃO foi verificado, e é o que falta:** nenhuma mensagem foi entregue
+por um servidor SMTP real. Não há provedor contratado, domínio verificado, nem
+SPF, DKIM e DMARC configurados. Tratar como **integração preparada, não como
+funcionalidade comprovada**.
 
 **O que depende disso:**
 
@@ -23,13 +36,27 @@ lança erro explícito na chamada, em vez de fingir que enviou.
 - aviso de aprovação ou rejeição de anúncio;
 - mensagem do interessado para o anunciante.
 
-Em desenvolvimento e em teste tudo funciona (os testes leem o link do arquivo
-de log). **Em produção, sem um provedor real, ninguém confirma e-mail nem
-recupera a senha.**
+Em desenvolvimento e em teste tudo funciona com o transporte `console` (os
+testes leem o link do arquivo de log). **Em produção, sem um provedor
+configurado e testado, ninguém confirma e-mail nem recupera a senha.**
 
-**O que falta:** implementar `sendViaSmtp` em `src/lib/mail.ts` (a interface
-`MailMessage` já é o ponto de extensão), contratar um provedor, verificar o
-domínio e configurar SPF, DKIM e DMARC.
+**Para ligar:** preencha `MAIL_SMTP_HOST`, `MAIL_SMTP_USER` e
+`MAIL_SMTP_PASSWORD` no ambiente, troque `MAIL_TRANSPORT` para `smtp`, e
+**envie uma mensagem de teste antes de abrir para o público** — o caminho ainda
+não foi percorrido de ponta a ponta nenhuma vez.
+
+### 1.1.1 Terceiro tamanho de imagem no `srcset`
+
+**Situação:** cada foto é gravada em dois tamanhos, 480w e 1600w. No celular o
+layout pede cerca de 985 px reais, então o navegador escolhe o arquivo de
+1600w. A medição com Lighthouse mostrou o LCP em 5,3 s na página inicial, mesmo
+depois das correções descritas em [TESTES.md](TESTES.md#71-desempenho-lighthouse).
+
+**O que falta:** gerar uma variante intermediária (algo como 1024w) em
+`processAndStoreImage`, acrescentar a coluna correspondente em `ListingImage`
+com migração, incluí-la no `srcSet` de `VehicleImage` e reprocessar as fotos já
+existentes. Não é difícil, mas mexe no banco e no acervo — por isso ficou
+registrado em vez de feito às pressas.
 
 ### 1.2 Armazenamento persistente de arquivos
 

@@ -219,6 +219,12 @@ fila de moderação não nascer vazia. Todo anúncio criado por ele carrega o se
 gravadas em `log/emails.log` e impressas no terminal — é de lá que se pega o link de
 confirmação de e-mail e o de redefinição de senha.
 
+`MAIL_TRANSPORT="smtp"` envia de verdade, por nodemailer, e exige
+`MAIL_SMTP_HOST`, `MAIL_SMTP_USER` e `MAIL_SMTP_PASSWORD` — a aplicação recusa
+iniciar se faltar alguma. **Esse caminho nunca foi percorrido contra um servidor
+real**: envie uma mensagem de teste antes de confiar nele. Ver
+[docs/PENDENCIAS.md](docs/PENDENCIAS.md).
+
 ## Testes
 
 ```bash
@@ -232,7 +238,7 @@ npm run check:contraste       # contraste de todos os pares de cor
 | Verificação | Resultado |
 | ----------- | --------- |
 | `typecheck` · `lint` · `build` | sem erros |
-| `npm test` | **105 testes**, 6 arquivos |
+| `npm test` | **112 testes**, 7 arquivos |
 | `npm run test:e2e` | **52 testes**, desktop 1440×900 e Pixel 7 |
 | `npm run audit:deps` | **0 vulnerabilidades** |
 | `npm run check:contraste` | **23/23 pares** acima do WCAG AA |
@@ -241,7 +247,7 @@ Tudo isso roda no GitHub Actions a cada push, em quatro jobs paralelos
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). O selo no topo reflete
 a última execução — os números acima não dependem de você acreditar em mim.
 
-Os 105 testes de unidade e integração cobrem o que quebra regra de negócio ou
+Os 112 testes de unidade e integração cobrem o que quebra regra de negócio ou
 segurança: a tradução entre URL e consulta do catálogo, as transições de situação do
 anúncio, a validação de entrada, o ciclo de sessão e a leitura real do cabeçalho das
 imagens enviadas.
@@ -320,9 +326,14 @@ A lista completa, imagem por imagem, está em [docs/IMAGENS.md](docs/IMAGENS.md)
 
 Coisas que a plataforma **não** faz, e que são decisão consciente, não esquecimento:
 
-- **Não envia e-mail de verdade.** O transporte implementado é o `console`, que grava
-  em `log/emails.log`. Verificação de e-mail e recuperação de senha **não funcionam
-  fora do ambiente local** sem ligar um provedor.
+- **O envio de e-mail por SMTP nunca foi exercitado contra um provedor real.** O
+  transporte está implementado e a validação da configuração é testada, mas nenhuma
+  mensagem foi entregue de verdade — sem provedor, domínio verificado e SPF/DKIM,
+  ninguém confirma e-mail nem recupera a senha em produção. **Integração preparada,
+  não funcionalidade comprovada.**
+- **O `srcset` das fotos tem só dois tamanhos**, 480w e 1600w. No celular o navegador
+  acaba escolhendo o de 1600w, e o LCP fica em 5,3 s. Falta um degrau intermediário —
+  medições em [docs/TESTES.md](docs/TESTES.md).
 - **Não tem segundo fator para administrador.** O lugar está preparado, a
   implementação não existe.
 - **A CSP ainda tem `unsafe-inline` no `script-src`**, o que reduz a proteção contra
