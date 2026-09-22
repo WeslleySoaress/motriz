@@ -15,6 +15,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Sobre `npm install` em vez de `npm ci`, que seria o esperado num CI:
+# o package-lock.json é gerado no Windows, e ali o npm não registra
+# @emnapi/core nem @emnapi/runtime no nível de topo. Os dois são dependências
+# de @img/sharp-wasm32 e só fazem falta no Linux, então o `npm ci` recusa o
+# lock como incompleto e nenhum job chega a rodar. O `npm install` respeita as
+# versões travadas no lock e resolve o que falta para esta plataforma.
+# Para voltar a usar `npm ci`, o lock precisa ser gerado em Linux.
+
 env:
   # O build importa src/lib/env.ts, que valida a configuração e derruba o
   # processo se algo obrigatório faltar. Estes valores são de CI, descartáveis,
@@ -35,7 +43,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - run: npx prisma generate
       - name: Verificação de tipos
         run: npm run typecheck
@@ -53,7 +61,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - run: npx prisma generate
       # O globalSetup do Vitest cria e migra prisma/test.db sozinho, e apaga no
       # fim. Nenhum preparo extra é necessário aqui.
@@ -69,7 +77,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - run: npx prisma generate
       # Só o Chromium: os dois projetos do Playwright (desktop e Pixel 7) usam
       # o mesmo motor, então baixar Firefox e WebKit seria minuto perdido.
@@ -98,7 +106,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - name: Vulnerabilidades nas dependências de produção
         run: npm run audit:deps
       - name: Contraste de cor (WCAG AA)
