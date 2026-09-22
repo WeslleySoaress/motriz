@@ -131,7 +131,11 @@ export async function processAndStoreImage(
         fit: 'inside',
         withoutEnlargement: true,
       })
-      .webp({ quality: 82, effort: 4 })
+      // Qualidade 76 com esforço 6, e não 82 com esforço 4. O esforço maior
+      // custa tempo só uma vez, no upload; a economia de bytes vale em toda
+      // visita. A medição com Lighthouse mostrou a página inicial em 1,7 MB,
+      // quase toda em fotografia — ver docs/TESTES.md.
+      .webp({ quality: 76, effort: 6 })
       .toBuffer({ resolveWithObject: true })
 
     await putObject(storageKey, fullBuffer.data)
@@ -140,7 +144,7 @@ export async function processAndStoreImage(
     const thumbBuffer = await base
       .clone()
       .resize({ width: THUMB_WIDTH, fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: 72, effort: 4 })
+      .webp({ quality: 72, effort: 6 })
       .toBuffer()
 
     await putObject(thumbKey, thumbBuffer)

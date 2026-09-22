@@ -166,9 +166,14 @@ export default async function CatalogPage({ searchParams }: { searchParams: Sear
               <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
                 {result.items.map((listing, index) => (
                   <li key={listing.id}>
+                    {/* No catálogo o card é o conteúdo principal e o primeiro
+                        deles é o elemento de LCP, então ele carrega cedo. Os
+                        demais ficam no lazy: em coluna única no celular, só um
+                        está acima da dobra, e três em `eager` disputavam banda
+                        entre si. */}
                     <ListingCard
                       listing={listing}
-                      priority={index < 3}
+                      priority={index === 0}
                       sizes="(min-width: 1280px) 28vw, (min-width: 640px) 44vw, 92vw"
                       className="h-full"
                     />

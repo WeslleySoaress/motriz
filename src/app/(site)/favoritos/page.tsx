@@ -55,7 +55,8 @@ export default async function FavoritesPage() {
           <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {favorites.map((listing, index) => (
               <li key={listing.id}>
-                <ListingCard listing={listing} priority={index < 4} className="h-full" />
+                {/* Só o primeiro carrega cedo; ver o comentário no catálogo. */}
+                <ListingCard listing={listing} priority={index === 0} className="h-full" />
               </li>
             ))}
           </ul>

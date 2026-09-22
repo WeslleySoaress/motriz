@@ -135,9 +135,13 @@ export default async function HomePage() {
           />
         ) : (
           <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {featured.map((listing, index) => (
+            {featured.map((listing) => (
               <li key={listing.id}>
-                <ListingCard listing={listing} priority={index < 4} className="h-full" />
+                {/* Sem prioridade: a seção de destaques fica abaixo da dobra
+                    nas duas larguras, e a foto do herói é o elemento de LCP.
+                    Quatro cards em `eager` disputavam banda com ela, e a
+                    medição mostrou o LCP indo a 7,8 s. */}
+                <ListingCard listing={listing} priority={false} className="h-full" />
               </li>
             ))}
           </ul>
